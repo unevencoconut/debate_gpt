@@ -17,6 +17,40 @@ This CLI assistant routes every user prompt through a structured, multi-model de
 - While a debate is running the console prints concise status updates (round, model, stance, verdict progress) so you can track the workflow without digging into the transcript.
 
 ## Conversation Flow
+```mermaid
+flowchart TD
+    U[User Prompt]
+    SP[SYSTEM.md (optional)]
+    subgraph Round 1
+        D1[GPT-5 Debater]
+        D2[GPT-4o Debater]
+        D3[GPT-4.1 Debater]
+    end
+    subgraph Follow-up Rounds
+        Digest[JSON Digest of latest stances]
+        D1R[GPT-5 Updates/Stands or Concedes]
+        D2R[GPT-4o Updates/Stands or Concedes]
+        D3R[GPT-4.1 Updates/Stands or Concedes]
+    end
+    subgraph Verdict Stage
+        J[The Judge (o3)]
+        Consensus[Debater Consensus Votes]
+    end
+    subgraph Final Answer
+        W[The Writer (o3)]
+    end
+
+    U -->|User submission| Round 1
+    SP -->|System prompt| Round 1
+    Round 1 --> Digest
+    Digest --> Follow-up Rounds
+    Follow-up Rounds -->|Transcript + Final Positions| J
+    J -->|Verdict JSON| Consensus
+    J -->|Verdict Summary| W
+    Consensus --> W
+    W -->|Final answer| Console[(Console Output)]
+    W --> Transcript[(TRANSCRIPT.md + Saved Logs)]
+```
 1. **Debate Round 1** – Three debater roles (labels `GPT-5`, `GPT-4o`, `GPT-41`) receive identical instructions and reply in JSON containing `stance`, `content`, and optional `notes`. They begin with `stance: "stand"`.
 2. **Follow-up Rounds** – Up to two additional rounds run while more than one debater remains active. Each participant receives a JSON digest of every model's latest stance/content, can refine their answer, or concede using `stance: "concede:<opponent>"`. Invalid JSON responses trigger a single retry before the turn is recorded.
 3. **Judge Review** – The judge role (model `o3` by default) reads the formatted transcript, the final positions, and the perceived winner. It returns JSON detailing the verdict (`approved`, `rejected`, or `no_winner`), reasoning, conclusion, and winner label.
