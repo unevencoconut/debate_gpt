@@ -20,36 +20,54 @@ This CLI assistant routes every user prompt through a structured, multi-model de
 ```mermaid
 flowchart TD
     U[User Prompt]
-    SP[SYSTEM.md (optional)]
-    subgraph Round 1
-        D1[GPT-5 Debater]
-        D2[GPT-4o Debater]
-        D3[GPT-4.1 Debater]
-    end
-    subgraph Follow-up Rounds
-        Digest[JSON Digest of latest stances]
-        D1R[GPT-5 Updates/Stands or Concedes]
-        D2R[GPT-4o Updates/Stands or Concedes]
-        D3R[GPT-4.1 Updates/Stands or Concedes]
-    end
-    subgraph Verdict Stage
-        J[The Judge (o3)]
-        Consensus[Debater Consensus Votes]
-    end
-    subgraph Final Answer
-        W[The Writer (o3)]
+    SP["SYSTEM.md (optional)"]
+
+    subgraph Round1["Round 1 Debaters"]
+        D1[GPT-5]
+        D2[GPT-4o]
+        D3[GPT-4.1]
     end
 
-    U -->|User submission| Round 1
-    SP -->|System prompt| Round 1
-    Round 1 --> Digest
-    Digest --> Follow-up Rounds
-    Follow-up Rounds -->|Transcript + Final Positions| J
-    J -->|Verdict JSON| Consensus
-    J -->|Verdict Summary| W
+    subgraph FollowRounds["Follow-up Rounds"]
+        Digest["JSON digest of latest stances"]
+        D1R["GPT-5 updates / concedes"]
+        D2R["GPT-4o updates / concedes"]
+        D3R["GPT-4.1 updates / concedes"]
+    end
+
+    subgraph VerdictStage["Verdict Stage"]
+        J["The Judge (o3)"]
+        Consensus["Consensus votes"]
+    end
+
+    subgraph FinalStage["Final Answer"]
+        W["The Writer (o3)"]
+        Console[(Console output)]
+        Transcript["TRANSCRIPT.md + saved logs"]
+    end
+
+    U --> D1
+    U --> D2
+    U --> D3
+    SP --> D1
+    SP --> D2
+    SP --> D3
+
+    D1 --> Digest
+    D2 --> Digest
+    D3 --> Digest
+    Digest --> D1R
+    Digest --> D2R
+    Digest --> D3R
+    D1R --> J
+    D2R --> J
+    D3R --> J
+
+    J --> Consensus
+    J --> W
     Consensus --> W
-    W -->|Final answer| Console[(Console Output)]
-    W --> Transcript[(TRANSCRIPT.md + Saved Logs)]
+    W --> Console
+    W --> Transcript
 ```
 1. **Debate Round 1** – Three debater roles (labels `GPT-5`, `GPT-4o`, `GPT-41`) receive identical instructions and reply in JSON containing `stance`, `content`, and optional `notes`. They begin with `stance: "stand"`.
 2. **Follow-up Rounds** – Up to two additional rounds run while more than one debater remains active. Each participant receives a JSON digest of every model's latest stance/content, can refine their answer, or concede using `stance: "concede:<opponent>"`. Invalid JSON responses trigger a single retry before the turn is recorded.
