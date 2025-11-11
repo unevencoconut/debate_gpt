@@ -2,7 +2,7 @@
 import json
 
 from config import DEBATE_MODELS, JUDGE_LABEL, JUDGE_MODEL, MAX_DEBATE_ROUNDS, WRITER_MODEL
-from services.openai_client import generate_chat_response
+from services.openai_client import Colors, generate_chat_response
 from workflow.prompts import (
     build_consensus_prompt,
     build_debater_system_prompt,
@@ -195,6 +195,23 @@ def build_round_digest(debate_state):
     return json.dumps(digest_entries, ensure_ascii=False, indent=2)
 
 
+def display_round_status(round_label, model_label, reply):
+    """Print a concise update for the current model reply."""
+    stance = reply.get("stance", "stand")
+    stance_display = stance.upper()
+    if stance == "concede":
+        conceded_to = reply.get("conceded_to")
+        if conceded_to:
+            stance_display = f"CONCEDE → {conceded_to}"
+    notes = reply.get("notes")
+    if isinstance(notes, str) and notes.strip():
+        cleaned_notes = " ".join(notes.strip().split())
+        notes_display = f" | Notes: {cleaned_notes}"
+    else:
+        notes_display = ""
+    print(f"{Colors.CYAN}Round {round_label} - {model_label} ({stance_display}){notes_display}{Colors.RESET}")
+
+
 def request_debater_reply(history, model_id):
     """Fetch a debater reply, allowing a single retry if the JSON is invalid."""
     attempts = 0
@@ -234,6 +251,8 @@ def run_debate_session(user_prompt, base_system):
     transcript = []
     active_models = set()
 
+    print(f"{Colors.GREEN}Commencing Debate!{Colors.RESET}")
+
     # Round 1 – initial answers
     for participant in DEBATE_MODELS:
         label = participant["label"]
@@ -265,6 +284,8 @@ def run_debate_session(user_prompt, base_system):
             }
         )
 
+        display_round_status(1, label, reply)
+
     round_number = 2
     while len(active_models) > 1 and round_number <= MAX_DEBATE_ROUNDS:
         state_summary = build_round_digest(debate_state)
@@ -291,6 +312,8 @@ def run_debate_session(user_prompt, base_system):
                     "conceded_to": reply.get("conceded_to"),
                 }
             )
+
+            display_round_status(round_number, name, reply)
 
         round_number += 1
 
@@ -319,6 +342,7 @@ def run_debate_session(user_prompt, base_system):
             "content": build_judge_request(user_prompt, winner, transcript_text_for_judge, final_positions_text),
         },
     ]
+    print(f"{Colors.MAGENTA}Judge reviewing debate...{Colors.RESET}")
     judge_raw = generate_chat_response(judge_history, JUDGE_MODEL)
     judge_history.append({"role": "assistant", "content": judge_raw})
     judge_result = parse_judge_response(judge_raw)
@@ -366,6 +390,10 @@ def run_debate_session(user_prompt, base_system):
             "notes": judge_result.get("reasoning", ""),
             "conceded_to": judge_result.get("winner"),
         }
+    )
+
+    print(
+        f"{Colors.MAGENTA}{JUDGE_LABEL} verdict ready ({judge_result.get('verdict', 'no_winner').upper()}){Colors.RESET}"
     )
 
     consensus_results = {}
