@@ -15,6 +15,17 @@ from workflow.prompts import (
 )
 
 
+INVALID_DEBATER_RESPONSE_MESSAGE = (
+    'The previous reply was not valid JSON. Respond again using only JSON with keys '
+    '"stance", "content", and optional "notes".'
+)
+
+INVALID_CONSENSUS_RESPONSE_MESSAGE = (
+    'The previous reply was not valid JSON. Respond again using only JSON with the keys '
+    '"agreement" ("agree" or "disagree") and optional "comment".'
+)
+
+
 # This function removes code block wrappers from text.
 def strip_code_fences(text):
     if text.startswith("```") and text.endswith("```"):
@@ -42,9 +53,17 @@ def parse_json_response(text):
 # This function tidies up what a debater just said.
 def normalize_debater_reply(raw_text):
     parsed = parse_json_response(raw_text)
-    stance = parsed.get("stance", "stand").lower()
-    content = parsed.get("content", raw_text)
-    notes = parsed.get("notes", "")
+    parsed_is_dict = isinstance(parsed, dict)
+    stance_value = (parsed.get("stance") if parsed_is_dict else None) or "stand"
+    stance = stance_value.lower() if isinstance(stance_value, str) else "stand"
+    content = (parsed.get("content") if parsed_is_dict else raw_text)
+    if not isinstance(content, str):
+        content = str(content)
+    notes = parsed.get("notes", "") if parsed_is_dict else ""
+    if not isinstance(notes, str):
+        notes = str(notes)
+
+    is_valid = parsed_is_dict and "stance" in parsed and "content" in parsed
 
     conceded_to = None
     if stance.startswith("concede"):
@@ -61,6 +80,7 @@ def normalize_debater_reply(raw_text):
         "notes": notes.strip() if isinstance(notes, str) else "",
         "conceded_to": conceded_to,
         "raw": raw_text,
+        "valid": is_valid,
     }
 
 
@@ -83,14 +103,20 @@ def parse_judge_response(raw_text):
 # This function checks how each debater reacted to the verdict.
 def normalize_consensus_reply(raw_text):
     parsed = parse_json_response(raw_text)
-    agreement = parsed.get("agreement", "agree").lower()
+    parsed_is_dict = isinstance(parsed, dict)
+    agreement_value = (parsed.get("agreement") if parsed_is_dict else None) or "agree"
+    agreement = agreement_value.lower() if isinstance(agreement_value, str) else "agree"
+    is_valid = parsed_is_dict and "agreement" in parsed
     if agreement not in {"agree", "disagree"}:
         agreement = "agree"
-    comment = parsed.get("comment", "")
+    comment = parsed.get("comment", "") if parsed_is_dict else ""
+    if not isinstance(comment, str):
+        comment = str(comment)
     return {
         "agreement": agreement,
         "comment": comment.strip() if isinstance(comment, str) else "",
         "raw": raw_text,
+        "valid": is_valid,
     }
 
 
@@ -143,6 +169,38 @@ def format_transcript_display(transcript):
     return "\n\n".join(sections).strip()
 
 
+def request_debater_reply(history, model_id):
+    """Fetch a debater reply, allowing a single retry if the JSON is invalid."""
+    attempts = 0
+    reply = None
+    while attempts < 2:
+        raw_response = generate_chat_response(history, model_id)
+        reply = normalize_debater_reply(raw_response)
+        history.append({"role": "assistant", "content": raw_response})
+        if reply["valid"]:
+            break
+        attempts += 1
+        if attempts < 2:
+            history.append({"role": "user", "content": INVALID_DEBATER_RESPONSE_MESSAGE})
+    return reply
+
+
+def request_consensus_reply(history, model_id):
+    """Fetch a consensus reply, allowing a single retry if the JSON is invalid."""
+    attempts = 0
+    reply = None
+    while attempts < 2:
+        raw_response = generate_chat_response(history, model_id)
+        reply = normalize_consensus_reply(raw_response)
+        history.append({"role": "assistant", "content": raw_response})
+        if reply["valid"]:
+            break
+        attempts += 1
+        if attempts < 2:
+            history.append({"role": "user", "content": INVALID_CONSENSUS_RESPONSE_MESSAGE})
+    return reply
+
+
 # This function runs the entire debate cycle and bundles the results.
 def run_debate_session(user_prompt, base_system):
     """Execute the multi-model debate workflow and return a structured result."""
@@ -158,9 +216,7 @@ def run_debate_session(user_prompt, base_system):
             {"role": "system", "content": build_debater_system_prompt(label, base_system)},
             {"role": "user", "content": build_initial_debate_message(user_prompt)},
         ]
-        raw_response = generate_chat_response(history, model_id)
-        reply = normalize_debater_reply(raw_response)
-        history.append({"role": "assistant", "content": raw_response})
+        reply = request_debater_reply(history, model_id)
 
         debate_state[label] = {
             "model": model_id,
@@ -200,9 +256,7 @@ def run_debate_session(user_prompt, base_system):
         for name in list(active_models):
             state = debate_state[name]
             state["history"].append({"role": "user", "content": build_round_update_message(round_number, state_summary)})
-            raw_response = generate_chat_response(state["history"], state["model"])
-            reply = normalize_debater_reply(raw_response)
-            state["history"].append({"role": "assistant", "content": raw_response})
+            reply = request_debater_reply(state["history"], state["model"])
             state["latest"] = reply
 
             if reply["stance"] == "concede":
@@ -306,9 +360,7 @@ def run_debate_session(user_prompt, base_system):
         state = debate_state[label]
         consensus_prompt = build_consensus_prompt(judge_result["conclusion"], judge_result["reasoning"] or "")
         state["history"].append({"role": "user", "content": consensus_prompt})
-        raw_reply = generate_chat_response(state["history"], state["model"])
-        state["history"].append({"role": "assistant", "content": raw_reply})
-        consensus = normalize_consensus_reply(raw_reply)
+        consensus = request_consensus_reply(state["history"], state["model"])
         consensus_results[label] = consensus
         if consensus["agreement"] == "agree":
             agree_count += 1
