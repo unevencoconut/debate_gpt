@@ -39,8 +39,9 @@ def build_round_update_message(round_number, state_summary):
     return dedent(
         f"""
         Round {round_number} Update:
-        • Here are the latest positions from all participants:
+        • Latest positions (JSON digest):
         {state_summary}
+        • Parse the JSON to understand each participant's stance, key points, and concessions.
         • You may reinforce your stance or concede if another model's case is stronger.
         • To concede, set "stance" to "concede:<Model Name>" referencing the model you believe should win.
         • If you remain in the debate, keep "stance" as "stand" and refine your argument (<= 200 words).

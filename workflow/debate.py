@@ -169,6 +169,32 @@ def format_transcript_display(transcript):
     return "\n\n".join(sections).strip()
 
 
+def build_round_digest(debate_state):
+    """Create a JSON digest of the latest positions for all participants."""
+    digest_entries = []
+    for participant in DEBATE_MODELS:
+        label = participant["label"]
+        state = debate_state.get(label)
+        if not state:
+            continue
+        latest = state.get("latest")
+        if not latest:
+            continue
+        entry = {
+            "model": label,
+            "stance": latest.get("stance", "stand"),
+            "content": latest.get("content", ""),
+        }
+        conceded_to = latest.get("conceded_to")
+        if conceded_to:
+            entry["conceded_to"] = conceded_to
+        notes = latest.get("notes")
+        if notes:
+            entry["notes"] = notes
+        digest_entries.append(entry)
+    return json.dumps(digest_entries, ensure_ascii=False, indent=2)
+
+
 def request_debater_reply(history, model_id):
     """Fetch a debater reply, allowing a single retry if the JSON is invalid."""
     attempts = 0
@@ -241,17 +267,7 @@ def run_debate_session(user_prompt, base_system):
 
     round_number = 2
     while len(active_models) > 1 and round_number <= MAX_DEBATE_ROUNDS:
-        summary_lines = []
-        for participant in DEBATE_MODELS:
-            label = participant["label"]
-            latest = debate_state[label]["latest"]
-            if not latest:
-                continue
-            stance_display = latest["stance"]
-            if stance_display == "concede" and latest.get("conceded_to"):
-                stance_display = f"concede to {latest['conceded_to']}"
-            summary_lines.append(f"- {label}: {stance_display}\n  {latest['content']}")
-        state_summary = "\n".join(summary_lines)
+        state_summary = build_round_digest(debate_state)
 
         for name in list(active_models):
             state = debate_state[name]
