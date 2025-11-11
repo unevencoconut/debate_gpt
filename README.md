@@ -14,18 +14,19 @@ This CLI assistant routes every user prompt through a structured, multi-model de
 - Start the tool with `python3 main.py`.
 - On startup the CLI looks for a `SYSTEM.md` file; if it exists and contains text, that content becomes the shared system prompt for every role. If the file is missing or blank, the debate runs with no additional system guidance.
 - Subsequent prompts are entered at `User:`. The app maintains in-memory history and mirrors the conversation to `TRANSCRIPT.md` after each turn.
+- While a debate is running the console prints concise status updates (round, model, stance, verdict progress) so you can track the workflow without digging into the transcript.
 
 ## Conversation Flow
 1. **Debate Round 1** – Three debater roles (labels `GPT-5`, `GPT-4o`, `GPT-41`) receive identical instructions and reply in JSON containing `stance`, `content`, and optional `notes`. They begin with `stance: "stand"`.
-2. **Follow-up Rounds** – Up to two additional rounds run while more than one debater remains active. Each participant sees a summary of current positions, can refine their answer, or concede using `stance: "concede:<opponent>"`.
-3. **Judge Review** – The judge role (model `o3`) reads the full transcript, the final positions, and the perceived winner. It returns JSON detailing the verdict (`approved`, `rejected`, or `no_winner`), reasoning, conclusion, and winner label.
+2. **Follow-up Rounds** – Up to two additional rounds run while more than one debater remains active. Each participant receives a JSON digest of every model's latest stance/content, can refine their answer, or concede using `stance: "concede:<opponent>"`. Invalid JSON responses trigger a single retry before the turn is recorded.
+3. **Judge Review** – The judge role (model `o3` by default) reads the formatted transcript, the final positions, and the perceived winner. It returns JSON detailing the verdict (`approved`, `rejected`, or `no_winner`), reasoning, conclusion, and winner label.
 4. **Consensus Check** – Every debater receives the judge’s conclusion and responds with JSON indicating agreement or dissent (`agreement`, optional `comment`). These votes are tracked for later display.
-5. **Final Answer Synthesis** – The judge model is prompted again to draft the final user-facing answer, using the validated verdict and (when available) the winning debater’s statement.
-6. **Output & Persistence** – Only the final answer (or the verdict, if no final answer is available) is printed in the console. A richly formatted transcript—including system prompt, verdict details, vote counts, and every debate turn—is appended to the assistant’s message history and written to `TRANSCRIPT.md`. Conversation snapshots can be saved to `conversations/<id>.md` and `conversations_data/<id>.py`.
+5. **Final Answer Synthesis** – A separate writer role (model `o3` by default) crafts the user-facing response using the judge’s validated verdict and the winning debater’s statement when available.
+6. **Output & Persistence** – The console shows the writer’s final answer (or the verdict, if no final answer is available). A richly formatted transcript—including system prompt, verdict details, vote counts, and every debate turn—is appended to the assistant’s message history and written to `TRANSCRIPT.md`. Conversation snapshots can be saved to `conversations/<id>.md` and `conversations_data/<id>.py`.
 
 ## Models & Configuration
 - Debater labels map to OpenAI models: `GPT-5 → gpt-5`, `GPT-4o → gpt-4o`, `GPT-41 → gpt-4.1`.
-- The judge and final answer generator both use the `o3` model.
+- The judge (`The Judge`) and writer (`The Writer`) roles default to the `o3` model but can be changed in `config.py`.
 - Default request parameters come from environment variables (`MODEL_NAME`, `MODEL_TEMPERATURE`, `MODEL_TOP_P`, `MODEL_FREQUENCY_PENALTY`, `MODEL_PRESENCE_PENALTY`). Values defined in `.env` or the shell are applied at runtime.
 
 ## Interactive Shortcuts
