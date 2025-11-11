@@ -26,7 +26,6 @@ def generate_chat_response(messages, model_overrides=None):
         elif isinstance(model_overrides, str):
             request_parameters["model"] = model_overrides
         completion = openai.chat.completions.create(**request_parameters, messages=messages)
-        print(f"{Colors.RED}{completion.usage}{Colors.RESET} \n")  # Evaluate token usage
         return completion.choices[0].message.content.strip()
     except Exception as e:
         print(f"Error generating chat response: {e}")
