@@ -1,7 +1,7 @@
 # This file runs the debate conversation from start to finish.
 import json
 
-from config import DEBATE_MODELS, JUDGE_LABEL, JUDGE_MODEL, MAX_DEBATE_ROUNDS
+from config import DEBATE_MODELS, JUDGE_LABEL, JUDGE_MODEL, MAX_DEBATE_ROUNDS, WRITER_MODEL
 from services.openai_client import generate_chat_response
 from workflow.prompts import (
     build_consensus_prompt,
@@ -431,7 +431,7 @@ def run_debate_session(user_prompt, base_system):
             ),
         },
     ]
-    final_answer_raw = generate_chat_response(final_answer_history, JUDGE_MODEL)
+    final_answer_raw = generate_chat_response(final_answer_history, WRITER_MODEL)
     final_answer_history.append({"role": "assistant", "content": final_answer_raw})
     final_answer_candidate = final_answer_raw.strip()
     parsed_final_answer = parse_json_response(final_answer_candidate)

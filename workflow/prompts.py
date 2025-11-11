@@ -1,7 +1,7 @@
 # This file holds the text templates we send to the models.
 from textwrap import dedent
 
-from config import JUDGE_LABEL
+from config import JUDGE_LABEL, WRITER_LABEL
 
 
 # This function writes the pep talk each debater gets.
@@ -111,7 +111,7 @@ def build_judge_request(user_prompt, winner, transcript_text, final_positions):
 def build_final_answer_system_prompt(base_system):
     instructions = dedent(
         f"""
-        You are {JUDGE_LABEL}, finalizing the response for the end user.
+        You are {WRITER_LABEL}, finalizing the response for the end user.
         Provide one clear, direct answer derived from the validated verdict.
         Do not mention the debate process or the word "verdict".
         Respond in plain Markdown without surrounding JSON or metadata.
